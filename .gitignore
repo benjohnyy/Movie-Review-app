@@ -1,8 +1,11 @@
 .env
 node_modules
+<<<<<<< HEAD
 dist
 coverage
 *.log
 .DS_Store
 .idea
 .vscode
+=======
+>>>>>>> bac21f29bdb94534ee4529927797e723a30ac131
