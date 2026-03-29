@@ -1,22 +1,7 @@
-let movies = [
-    {
-        title: "Inception",
-        genre: "Sci-Fi",
-        director: "Christopher Nolan",
-        cast: "Leonardo DiCaprio",
-        reviews: []
-    },
-    {
-        title: "Interstellar",
-        genre: "Sci-Fi",
-        director: "Christopher Nolan",
-        cast: "Matthew McConaughey",
-        reviews: []
-    }
-];
-
+let movies = [];
 let currentSearch = "";
 let currentGenre = "All";
+const API_BASE = window.location.port === "5000" ? "" : "http://localhost:5000";
 
 function escapeHTML(value) {
     return String(value).replace(/[&<>"']/g, (char) => {
@@ -42,7 +27,7 @@ function getFilteredMovies() {
 
 function updateGenreOptions() {
     const genreFilter = document.getElementById("genreFilter");
-    const genres = [...new Set(movies.map((movie) => movie.genre.trim()).filter(Boolean))].sort((a, b) =>
+    const genres = [...new Set(movies.map((movie) => (movie.genre || "").trim()).filter(Boolean))].sort((a, b) =>
         a.localeCompare(b)
     );
 
@@ -52,8 +37,7 @@ function updateGenreOptions() {
         genreFilter.innerHTML += `<option value="${escapeHTML(genre)}">${escapeHTML(genre)}</option>`;
     });
 
-    const genreStillExists = genres.includes(currentGenre);
-    if (!genreStillExists && currentGenre !== "All") {
+    if (currentGenre !== "All" && !genres.includes(currentGenre)) {
         currentGenre = "All";
     }
 
@@ -61,13 +45,15 @@ function updateGenreOptions() {
 }
 
 function updateSummary(filteredMovies) {
-    const totalReviews = movies.reduce((count, movie) => count + movie.reviews.length, 0);
+    const totalReviews = movies.reduce((count, movie) => count + (movie.reviews || []).length, 0);
 
     document.getElementById("movieCount").textContent = filteredMovies.length;
     document.getElementById("reviewCount").textContent = totalReviews;
 }
 
 function getAverageRating(reviews) {
+    reviews = reviews || [];
+
     if (reviews.length === 0) {
         return "No ratings";
     }
@@ -92,7 +78,7 @@ function displayMovies(list) {
     }
 
     list.forEach((movie) => {
-        const movieIndex = movies.indexOf(movie);
+        const movieId = movie._id;
         const averageRating = getAverageRating(movie.reviews);
         const reviewsHTML = movie.reviews.length
             ? movie.reviews
@@ -117,7 +103,7 @@ function displayMovies(list) {
                     </div>
                     <div class="movie-actions">
                         <span class="avg-rating">${escapeHTML(averageRating)}</span>
-                        <button type="button" class="delete-btn" onclick="deleteMovie(${movieIndex})">Delete</button>
+                        <button type="button" class="delete-btn" onclick="deleteMovie('${movieId}')">Delete</button>
                     </div>
                 </div>
 
@@ -126,10 +112,10 @@ function displayMovies(list) {
 
                 <div class="reviewBox">
                     <div class="review-form">
-                        <input id="author${movieIndex}" placeholder="Your name">
-                        <input id="review${movieIndex}" placeholder="Write a short review">
-                        <input id="rating${movieIndex}" placeholder="1-5" type="number" min="1" max="5">
-                        <button type="button" class="primary-btn" onclick="addReview(${movieIndex})">Add Review</button>
+                        <input id="author-${movieId}" placeholder="Your name">
+                        <input id="review-${movieId}" placeholder="Write a short review">
+                        <input id="rating-${movieId}" placeholder="1-5" type="number" min="1" max="5">
+                        <button type="button" class="primary-btn" onclick="addReview('${movieId}')">Add Review</button>
                     </div>
                     <div class="review-list">${reviewsHTML}</div>
                 </div>
@@ -145,7 +131,27 @@ function refreshMovies() {
     displayMovies(getFilteredMovies());
 }
 
-function addMovie() {
+function runSearch() {
+    const searchInput = document.getElementById("search");
+    currentSearch = searchInput.value.toLowerCase().trim();
+    refreshMovies();
+}
+
+async function loadMovies() {
+    const response = await fetch(`${API_BASE}/movies`);
+
+    if (!response.ok) {
+        throw new Error("Failed to load movies.");
+    }
+
+    movies = (await response.json()).map((movie) => ({
+        ...movie,
+        reviews: movie.reviews || []
+    }));
+    refreshMovies();
+}
+
+async function addMovie() {
     const title = document.getElementById("title").value.trim();
     const genre = document.getElementById("genre").value.trim();
     const director = document.getElementById("director").value.trim();
@@ -155,52 +161,89 @@ function addMovie() {
         return;
     }
 
-    movies.unshift({
-        title,
-        genre,
-        director,
-        cast,
-        reviews: []
+    const response = await fetch(`${API_BASE}/movies`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            title,
+            genre,
+            director,
+            cast
+        })
     });
+
+    if (!response.ok) {
+        throw new Error("Failed to save movie.");
+    }
+
+    const newMovie = await response.json();
+    movies.unshift(newMovie);
 
     document.getElementById("title").value = "";
     document.getElementById("genre").value = "";
     document.getElementById("director").value = "";
     document.getElementById("cast").value = "";
-
+    document.getElementById("search").value = "";
     currentSearch = "";
     currentGenre = "All";
-    document.getElementById("search").value = "";
 
     refreshMovies();
 }
 
-function addReview(index) {
-    const author = document.getElementById(`author${index}`).value.trim();
-    const text = document.getElementById(`review${index}`).value.trim();
-    const rating = document.getElementById(`rating${index}`).value.trim();
+async function addReview(movieId) {
+    const author = document.getElementById(`author-${movieId}`).value.trim();
+    const text = document.getElementById(`review-${movieId}`).value.trim();
+    const rating = document.getElementById(`rating-${movieId}`).value.trim();
 
     if (!author || !text || !rating) {
         return;
     }
 
-    movies[index].reviews.push({
-        author,
-        text,
-        rating
+    const response = await fetch(`${API_BASE}/movies/${movieId}/review`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            author,
+            text,
+            rating: Number(rating)
+        })
     });
 
+    if (!response.ok) {
+        throw new Error("Failed to save review.");
+    }
+
+    const updatedMovie = await response.json();
+    movies = movies.map((movie) => movie._id === movieId ? updatedMovie : movie);
     refreshMovies();
 }
 
-function deleteMovie(index) {
-    movies.splice(index, 1);
+async function deleteMovie(movieId) {
+    const response = await fetch(`${API_BASE}/movies/${movieId}`, {
+        method: "DELETE"
+    });
+
+    if (!response.ok) {
+        throw new Error("Failed to delete movie.");
+    }
+
+    movies = movies.filter((movie) => movie._id !== movieId);
     refreshMovies();
 }
 
 document.getElementById("search").addEventListener("input", function () {
     currentSearch = this.value.toLowerCase().trim();
     refreshMovies();
+});
+
+document.getElementById("search").addEventListener("keydown", function (event) {
+    if (event.key === "Enter") {
+        runSearch();
+    }
 });
 
 document.getElementById("genreFilter").addEventListener("change", function () {
@@ -218,4 +261,12 @@ function sortZA() {
     refreshMovies();
 }
 
-refreshMovies();
+loadMovies().catch((error) => {
+    console.error(error);
+    document.getElementById("movieList").innerHTML = `
+        <div class="empty-state">
+            <h3>Unable to load movies</h3>
+            <p>${escapeHTML(error.message || "Check the server and MongoDB connection, then refresh the page.")}</p>
+        </div>
+    `;
+});
