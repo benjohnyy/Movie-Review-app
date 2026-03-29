@@ -1,20 +1,4 @@
-let movies = [
-    {
-        title: "Inception",
-        genre: "Sci-Fi",
-        director: "Christopher Nolan",
-        cast: "Leonardo DiCaprio",
-        reviews: []
-    },
-    {
-        title: "Interstellar",
-        genre: "Sci-Fi",
-        director: "Christopher Nolan",
-        cast: "Matthew McConaughey",
-        reviews: []
-    }
-];
-
+let movies = [];
 let currentSearch = "";
 let currentGenre = "All";
 
@@ -92,7 +76,6 @@ function displayMovies(list) {
     }
 
     list.forEach((movie) => {
-        const movieIndex = movies.indexOf(movie);
         const averageRating = getAverageRating(movie.reviews);
         const reviewsHTML = movie.reviews.length
             ? movie.reviews
@@ -117,7 +100,7 @@ function displayMovies(list) {
                     </div>
                     <div class="movie-actions">
                         <span class="avg-rating">${escapeHTML(averageRating)}</span>
-                        <button type="button" class="delete-btn" onclick="deleteMovie(${movieIndex})">Delete</button>
+                        <button type="button" class="delete-btn" onclick="deleteMovie('${movie._id}')">Delete</button>
                     </div>
                 </div>
 
@@ -126,10 +109,10 @@ function displayMovies(list) {
 
                 <div class="reviewBox">
                     <div class="review-form">
-                        <input id="author${movieIndex}" placeholder="Your name">
-                        <input id="review${movieIndex}" placeholder="Write a short review">
-                        <input id="rating${movieIndex}" placeholder="1-5" type="number" min="1" max="5">
-                        <button type="button" class="primary-btn" onclick="addReview(${movieIndex})">Add Review</button>
+                        <input id="author-${movie._id}" placeholder="Your name">
+                        <input id="review-${movie._id}" placeholder="Write a short review">
+                        <input id="rating-${movie._id}" placeholder="1-5" type="number" min="1" max="5">
+                        <button type="button" class="primary-btn" onclick="addReview('${movie._id}')">Add Review</button>
                     </div>
                     <div class="review-list">${reviewsHTML}</div>
                 </div>
@@ -145,7 +128,21 @@ function refreshMovies() {
     displayMovies(getFilteredMovies());
 }
 
-function addMovie() {
+async function loadMovies() {
+    try {
+        const response = await fetch("/movies");
+        if (!response.ok) {
+            throw new Error("Failed to fetch movies");
+        }
+
+        movies = await response.json();
+        refreshMovies();
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+async function addMovie() {
     const title = document.getElementById("title").value.trim();
     const genre = document.getElementById("genre").value.trim();
     const director = document.getElementById("director").value.trim();
@@ -155,47 +152,80 @@ function addMovie() {
         return;
     }
 
-    movies.unshift({
-        title,
-        genre,
-        director,
-        cast,
-        reviews: []
-    });
+    try {
+        const response = await fetch("/movies", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ title, genre, director, cast })
+        });
 
-    document.getElementById("title").value = "";
-    document.getElementById("genre").value = "";
-    document.getElementById("director").value = "";
-    document.getElementById("cast").value = "";
+        if (!response.ok) {
+            throw new Error("Failed to add movie");
+        }
 
-    currentSearch = "";
-    currentGenre = "All";
-    document.getElementById("search").value = "";
+        document.getElementById("title").value = "";
+        document.getElementById("genre").value = "";
+        document.getElementById("director").value = "";
+        document.getElementById("cast").value = "";
 
-    refreshMovies();
+        currentSearch = "";
+        currentGenre = "All";
+        document.getElementById("search").value = "";
+
+        await loadMovies();
+    } catch (error) {
+        console.error(error);
+    }
 }
 
-function addReview(index) {
-    const author = document.getElementById(`author${index}`).value.trim();
-    const text = document.getElementById(`review${index}`).value.trim();
-    const rating = document.getElementById(`rating${index}`).value.trim();
+async function addReview(movieId) {
+    const author = document.getElementById(`author-${movieId}`).value.trim();
+    const text = document.getElementById(`review-${movieId}`).value.trim();
+    const rating = document.getElementById(`rating-${movieId}`).value.trim();
 
     if (!author || !text || !rating) {
         return;
     }
 
-    movies[index].reviews.push({
-        author,
-        text,
-        rating
-    });
+    try {
+        const response = await fetch(`/movies/${movieId}/review`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                author,
+                text,
+                rating: Number(rating)
+            })
+        });
 
-    refreshMovies();
+        if (!response.ok) {
+            throw new Error("Failed to add review");
+        }
+
+        await loadMovies();
+    } catch (error) {
+        console.error(error);
+    }
 }
 
-function deleteMovie(index) {
-    movies.splice(index, 1);
-    refreshMovies();
+async function deleteMovie(movieId) {
+    try {
+        const response = await fetch(`/movies/${movieId}`, {
+            method: "DELETE"
+        });
+
+        if (!response.ok) {
+            throw new Error("Failed to delete movie");
+        }
+
+        await loadMovies();
+    } catch (error) {
+        console.error(error);
+    }
 }
 
 document.getElementById("search").addEventListener("input", function () {
@@ -218,4 +248,4 @@ function sortZA() {
     refreshMovies();
 }
 
-refreshMovies();
+loadMovies();
